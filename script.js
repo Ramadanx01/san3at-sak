@@ -1,7 +1,22 @@
 /* ============================================
+   خطة المعارف والأثر | حملة الأضاحي 2026
    صناع الحياة - نظام إدارة صكوك الأضاحي
-   Complete JavaScript Application
    ============================================ */
+
+// ============================================
+// CONFIGURATION
+// ============================================
+const CAMPAIGN_TARGET = 200000;
+
+const SAK_TYPES = {
+    'صك جاموسي': { name: 'صك جاموسي', defaultAmount: 13500 },
+    'صك بقري': { name: 'صك بقري', defaultAmount: 15000 },
+    'صك ضاني': { name: 'صك ضاني', defaultAmount: 15000 },
+    'صك الخير': { name: 'صك الخير', defaultAmount: 11500 },
+    'لحوم صدقات': { name: 'لحوم صدقات', defaultAmount: 400, unit: 'كيلو' }
+};
+
+const ALLIANCES = ['تحالف 1', 'تحالف 2', 'تحالف 3', 'تحالف 4', 'تحالف 5'];
 
 // ============================================
 // DATA STORE
@@ -9,12 +24,14 @@
 let saks = [];
 let deleteTarget = { type: null, sakId: null, participantId: null };
 let deleteModal = null;
+let editModal = null;
 
 // ============================================
 // INIT
 // ============================================
 document.addEventListener('DOMContentLoaded', function() {
     deleteModal = new bootstrap.Modal(document.getElementById('deleteModal'));
+    editModal = new bootstrap.Modal(document.getElementById('editParticipantModal'));
 
     loadData();
     setupListeners();
@@ -25,12 +42,22 @@ document.addEventListener('DOMContentLoaded', function() {
     const options = { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' };
     document.getElementById('currentDate').textContent = now.toLocaleDateString('ar-EG', options);
     document.getElementById('year').textContent = now.getFullYear();
+    document.getElementById('campaignTarget').textContent = formatNumber(CAMPAIGN_TARGET);
+    document.getElementById('campaignTargetDisplay').textContent = formatNumber(CAMPAIGN_TARGET);
 });
 
 // ============================================
 // EVENT LISTENERS
 // ============================================
 function setupListeners() {
+    // Sak type dropdown auto-fill amount
+    document.getElementById('sakType').addEventListener('change', function() {
+        const type = this.value;
+        if (SAK_TYPES[type]) {
+            document.getElementById('sakAmount').value = SAK_TYPES[type].defaultAmount;
+        }
+    });
+
     // Create sak form
     document.getElementById('createSakForm').addEventListener('submit', function(e) {
         e.preventDefault();
@@ -55,7 +82,7 @@ function setupListeners() {
     // Export buttons
     document.getElementById('btnPrint').addEventListener('click', () => window.print());
     document.getElementById('btnExcel').addEventListener('click', exportExcel);
-        document.getElementById('btnBackup').addEventListener('click', exportBackup);
+    document.getElementById('btnBackup').addEventListener('click', exportBackup);
     document.getElementById('btnRestore').addEventListener('change', importBackup);
 
     // Delete confirmation
@@ -65,6 +92,11 @@ function setupListeners() {
     document.getElementById('sakAmount').addEventListener('input', function() {
         this.value = this.value.replace(/[^0-9]/g, '');
     });
+
+    // Edit modal phone
+    document.getElementById('editPartPhone').addEventListener('input', function() {
+        this.value = this.value.replace(/[^0-9]/g, '').slice(0, 11);
+    });
 }
 
 // ============================================
@@ -72,14 +104,14 @@ function setupListeners() {
 // ============================================
 function loadData() {
     try {
-        const stored = localStorage.getItem('san3atSakData');
+        const stored = localStorage.getItem('hayatSakData_2026');
         if (stored) saks = JSON.parse(stored);
     } catch(e) { saks = []; }
 }
 
 function saveData() {
     try {
-        localStorage.setItem('san3atSakData', JSON.stringify(saks));
+        localStorage.setItem('hayatSakData_2026', JSON.stringify(saks));
         return true;
     } catch(e) {
         showToast('خطأ في حفظ البيانات', 'danger');
@@ -88,30 +120,28 @@ function saveData() {
 }
 
 function generateId() {
-    return Date.now().toString(36).toUpperCase() + Math.random().toString(36).substring(2, 5).toUpperCase();
+    return 'SAK-' + Date.now().toString(36).toUpperCase() + Math.random().toString(36).substring(2, 5).toUpperCase();
 }
 
 // ============================================
 // CREATE SAK
 // ============================================
 function createSak() {
-    const name = document.getElementById('sakName').value.trim();
+    const type = document.getElementById('sakType').value;
     const amount = parseFloat(document.getElementById('sakAmount').value);
+    const alliance = document.getElementById('sakAlliance').value;
     const notes = document.getElementById('sakNotes').value.trim();
 
-    if (!name) {
-        showToast('يرجى إدخال اسم الصك', 'warning');
-        return;
-    }
-    if (!amount || amount <= 0) {
-        showToast('يرجى إدخال مبلغ صحيح', 'warning');
-        return;
-    }
+    if (!type) { showToast('يرجى اختيار نوع الصك', 'warning'); return; }
+    if (!amount || amount <= 0) { showToast('يرجى إدخال مبلغ صحيح', 'warning'); return; }
+    if (!alliance) { showToast('يرجى اختيار التحالف', 'warning'); return; }
 
     const sak = {
         id: generateId(),
-        name: name,
+        type: type,
+        name: SAK_TYPES[type] ? SAK_TYPES[type].name : type,
         requiredAmount: amount,
+        alliance: alliance,
         notes: notes,
         participants: [],
         createdAt: new Date().toISOString(),
@@ -134,43 +164,76 @@ function addParticipant(sakId) {
     const sak = saks.find(s => s.id === sakId);
     if (!sak) return;
 
-    const nameInput = document.getElementById('partName-' + sakId);
-    const phoneInput = document.getElementById('partPhone-' + sakId);
-    const amountInput = document.getElementById('partAmount-' + sakId);
-    const notesInput = document.getElementById('partNotes-' + sakId);
+    const name = document.getElementById('partName-' + sakId).value.trim();
+    const phone = document.getElementById('partPhone-' + sakId).value.trim();
+    const amount = parseFloat(document.getElementById('partAmount-' + sakId).value);
+    const notes = document.getElementById('partNotes-' + sakId).value.trim();
 
-    const name = nameInput.value.trim();
-    const phone = phoneInput.value.trim();
-    const amount = parseFloat(amountInput.value);
-    const notes = notesInput.value.trim();
+    if (!name) { showToast('يرجى إدخال اسم المساهم', 'warning'); return; }
+    if (!amount || amount <= 0) { showToast('يرجى إدخال مبلغ صحيح', 'warning'); return; }
 
-    if (!name) {
-        showToast('يرجى إدخال اسم المشارك', 'warning');
-        return;
-    }
-    if (!amount || amount <= 0) {
-        showToast('يرجى إدخال مبلغ صحيح', 'warning');
-        return;
-    }
-
-    const participant = {
+    sak.participants.push({
         id: generateId(),
         name: name,
         phone: phone,
         amount: amount,
         notes: notes,
         createdAt: new Date().toISOString()
-    };
-
-    sak.participants.push(participant);
+    });
 
     if (saveData()) {
-        nameInput.value = '';
-        phoneInput.value = '';
-        amountInput.value = '';
-        notesInput.value = '';
+        document.getElementById('partName-' + sakId).value = '';
+        document.getElementById('partPhone-' + sakId).value = '';
+        document.getElementById('partAmount-' + sakId).value = '';
+        document.getElementById('partNotes-' + sakId).value = '';
         updateUI();
         showToast('تم إضافة المساهمة بنجاح', 'success');
+    }
+}
+
+// ============================================
+// EDIT PARTICIPANT
+// ============================================
+function editParticipant(sakId, participantId) {
+    const sak = saks.find(s => s.id === sakId);
+    if (!sak) return;
+    const p = sak.participants.find(x => x.id === participantId);
+    if (!p) return;
+
+    document.getElementById('editSakId').value = sakId;
+    document.getElementById('editParticipantId').value = participantId;
+    document.getElementById('editPartName').value = p.name;
+    document.getElementById('editPartPhone').value = p.phone || '';
+    document.getElementById('editPartAmount').value = p.amount;
+    document.getElementById('editPartNotes').value = p.notes || '';
+
+    editModal.show();
+}
+
+function saveEditParticipant() {
+    const sakId = document.getElementById('editSakId').value;
+    const participantId = document.getElementById('editParticipantId').value;
+
+    const sak = saks.find(s => s.id === sakId);
+    if (!sak) return;
+    const p = sak.participants.find(x => x.id === participantId);
+    if (!p) return;
+
+    const name = document.getElementById('editPartName').value.trim();
+    const amount = parseFloat(document.getElementById('editPartAmount').value);
+
+    if (!name) { showToast('يرجى إدخال الاسم', 'warning'); return; }
+    if (!amount || amount <= 0) { showToast('يرجى إدخال مبلغ صحيح', 'warning'); return; }
+
+    p.name = name;
+    p.phone = document.getElementById('editPartPhone').value.trim();
+    p.amount = amount;
+    p.notes = document.getElementById('editPartNotes').value.trim();
+
+    if (saveData()) {
+        editModal.hide();
+        updateUI();
+        showToast('تم تحديث المساهمة بنجاح', 'success');
     }
 }
 
@@ -179,7 +242,7 @@ function addParticipant(sakId) {
 // ============================================
 function confirmDeleteSak(sakId) {
     deleteTarget = { type: 'sak', sakId: sakId };
-    document.getElementById('deleteMessage').textContent = 'سيتم حذف الصك وجميع المشاركين نهائياً';
+    document.getElementById('deleteMessage').textContent = 'سيتم حذف الصك وجميع المساهمين نهائياً';
     deleteModal.show();
 }
 
@@ -231,6 +294,8 @@ function toggleSak(sakId) {
 function updateUI() {
     renderSaks();
     updateStats();
+    renderAlliances();
+    updateCampaignProgress();
 }
 
 function renderSaks() {
@@ -240,7 +305,9 @@ function renderSaks() {
     let filtered = saks;
     if (search) {
         filtered = saks.filter(sak => {
-            const matchSak = sak.name.toLowerCase().includes(search);
+            const matchSak = sak.name.toLowerCase().includes(search) ||
+                           sak.alliance.toLowerCase().includes(search) ||
+                           sak.type.toLowerCase().includes(search);
             const matchParticipant = sak.participants.some(p => 
                 p.name.toLowerCase().includes(search) || 
                 p.phone.includes(search)
@@ -250,23 +317,13 @@ function renderSaks() {
     }
 
     if (filtered.length === 0) {
-        if (saks.length === 0) {
-            container.innerHTML = `
-                <div class="empty-state">
-                    <div class="empty-icon"><i class="uil uil-clipboard-blank"></i></div>
-                    <h4>لا توجد صكوك مسجلة</h4>
-                    <p class="text-muted">استخدم النموذج أعلاه لإنشاء أول صك</p>
-                </div>
-            `;
-        } else {
-            container.innerHTML = `
-                <div class="empty-state">
-                    <div class="empty-icon"><i class="uil uil-search"></i></div>
-                    <h4>لا توجد نتائج</h4>
-                    <p class="text-muted">جرب البحث بكلمات مختلفة</p>
-                </div>
-            `;
-        }
+        container.innerHTML = `
+            <div class="empty-state">
+                <div class="empty-icon"><i class="uil uil-clipboard-blank"></i></div>
+                <h4>${saks.length === 0 ? 'لا توجد صكوك مسجلة' : 'لا توجد نتائج'}</h4>
+                <p class="text-muted">${saks.length === 0 ? 'استخدم النموذج أعلاه لإنشاء أول صك' : 'جرب البحث بكلمات مختلفة'}</p>
+            </div>
+        `;
         return;
     }
 
@@ -284,7 +341,7 @@ function renderSakCard(sak) {
 
     const percentColor = percent >= 100 ? 'var(--green)' : percent >= 60 ? 'var(--yellow)' : 'var(--red)';
 
-    const participantsHtml = sak.collapsed ? '' : renderParticipantsTable(sak);
+    const participantsHtml = sak.collapsed ? '' : renderParticipantsSection(sak);
     const toggleIcon = sak.collapsed ? 'uil-angle-down' : 'uil-angle-up';
     const toggleText = sak.collapsed ? 'عرض' : 'إخفاء';
 
@@ -295,10 +352,12 @@ function renderSakCard(sak) {
                     <h3 class="sak-name">
                         <i class="uil uil-award"></i>
                         ${escapeHtml(sak.name)}
+                        <span class="badge-alliance">${escapeHtml(sak.alliance)}</span>
                     </h3>
                     <div class="sak-meta">
+                        <span><i class="uil uil-tag"></i> ${escapeHtml(sak.type)}</span>
                         <span><i class="uil uil-calendar-alt"></i> ${formatDate(sak.createdAt)}</span>
-                        <span><i class="uil uil-users-alt"></i> ${sak.participants.length} مشارك</span>
+                        <span><i class="uil uil-users-alt"></i> ${sak.participants.length} مساهم</span>
                         ${sak.notes ? `<span><i class="uil uil-notes"></i> ${escapeHtml(sak.notes)}</span>` : ''}
                     </div>
                 </div>
@@ -312,7 +371,6 @@ function renderSakCard(sak) {
                 </div>
             </div>
             <div class="sak-body">
-                <!-- Progress -->
                 <div class="sak-progress">
                     <div class="progress-label">
                         <span>نسبة الاكتمال</span>
@@ -322,8 +380,6 @@ function renderSakCard(sak) {
                         <div class="progress-bar ${progressClass}" style="width: ${percent}%"></div>
                     </div>
                 </div>
-
-                <!-- Amounts -->
                 <div class="amounts-grid">
                     <div class="amount-item amount-required">
                         <span class="amount-value">${formatNumber(sak.requiredAmount)}</span>
@@ -338,14 +394,13 @@ function renderSakCard(sak) {
                         <span class="amount-label">المتبقي (ج.م)</span>
                     </div>
                 </div>
-
                 ${participantsHtml}
             </div>
         </div>
     `;
 }
 
-function renderParticipantsTable(sak) {
+function renderParticipantsSection(sak) {
     const formHtml = `
         <div class="participant-form">
             <div class="participant-form-title">
@@ -390,6 +445,9 @@ function renderParticipantsTable(sak) {
             <td><small class="text-muted">${formatDateTime(p.createdAt)}</small></td>
             <td><small class="text-muted">${escapeHtml(p.notes || '-')}</small></td>
             <td>
+                <button class="btn-edit-participant" onclick="editParticipant('${sak.id}', '${p.id}')" title="تعديل">
+                    <i class="uil uil-edit"></i>
+                </button>
                 <button class="btn-delete-participant" onclick="confirmDeleteParticipant('${sak.id}', '${p.id}')" title="حذف">
                     <i class="uil uil-trash-alt"></i>
                 </button>
@@ -407,13 +465,99 @@ function renderParticipantsTable(sak) {
                         <th>المبلغ</th>
                         <th>الوقت</th>
                         <th>ملاحظات</th>
-                        <th style="width:40px"></th>
+                        <th style="width:70px"></th>
                     </tr>
                 </thead>
                 <tbody>${rows}</tbody>
             </table>
         </div>
     `;
+}
+
+// ============================================
+// ALLIANCES
+// ============================================
+function renderAlliances() {
+    const container = document.getElementById('alliancesContainer');
+    if (saks.length === 0) {
+        container.innerHTML = '<p class="text-muted text-center py-3">لا توجد صكوك مسجلة</p>';
+        return;
+    }
+
+    const allianceData = {};
+    ALLIANCES.forEach(a => {
+        allianceData[a] = { required: 0, collected: 0, count: 0, participants: 0 };
+    });
+
+    saks.forEach(sak => {
+        if (allianceData[sak.alliance]) {
+            const collected = sak.participants.reduce((sum, p) => sum + p.amount, 0);
+            allianceData[sak.alliance].required += sak.requiredAmount;
+            allianceData[sak.alliance].collected += collected;
+            allianceData[sak.alliance].count += 1;
+            allianceData[sak.alliance].participants += sak.participants.length;
+        }
+    });
+
+    const activeAlliances = Object.entries(allianceData).filter(([_, d]) => d.count > 0);
+
+    if (activeAlliances.length === 0) {
+        container.innerHTML = '<p class="text-muted text-center py-3">لا توجد تحالفات نشطة</p>';
+        return;
+    }
+
+    container.innerHTML = `<div class="alliance-grid">
+        ${activeAlliances.map(([name, data]) => {
+            const percent = data.required > 0 ? Math.min((data.collected / data.required) * 100, 100) : 0;
+            let barColor = 'bg-danger';
+            if (percent >= 100) barColor = 'bg-success';
+            else if (percent >= 60) barColor = 'bg-warning';
+
+            return `
+                <div class="alliance-card">
+                    <div class="alliance-name">
+                        <i class="uil uil-users-alt"></i>
+                        ${escapeHtml(name)}
+                    </div>
+                    <div class="alliance-stats">
+                        <div class="alliance-stat">
+                            <span class="value" style="color:#c2185b">${formatNumber(data.required)}</span>
+                            <span class="label">المطلوب</span>
+                        </div>
+                        <div class="alliance-stat">
+                            <span class="value" style="color:var(--green)">${formatNumber(data.collected)}</span>
+                            <span class="label">المجمع</span>
+                        </div>
+                        <div class="alliance-stat">
+                            <span class="value" style="color:#e65100">${formatNumber(Math.max(data.required - data.collected, 0))}</span>
+                            <span class="label">المتبقي</span>
+                        </div>
+                        <div class="alliance-stat">
+                            <span class="value" style="color:#1565c0">${data.participants}</span>
+                            <span class="label">المساهمين</span>
+                        </div>
+                    </div>
+                    <div class="alliance-progress">
+                        <div class="progress">
+                            <div class="progress-bar ${barColor}" style="width: ${percent}%"></div>
+                        </div>
+                        <small class="text-muted">${percent.toFixed(1)}% - ${data.count} صك</small>
+                    </div>
+                </div>
+            `;
+        }).join('')}
+    </div>`;
+}
+
+// ============================================
+// CAMPAIGN PROGRESS
+// ============================================
+function updateCampaignProgress() {
+    const totalCollected = saks.reduce((sum, s) => sum + s.participants.reduce((pSum, p) => pSum + p.amount, 0), 0);
+    const percent = Math.min((totalCollected / CAMPAIGN_TARGET) * 100, 100);
+
+    document.getElementById('campaignCollected').textContent = formatNumber(totalCollected);
+    document.getElementById('campaignProgressBar').style.width = percent + '%';
 }
 
 // ============================================
@@ -444,15 +588,14 @@ function animateNumber(id, target) {
     function update(now) {
         const progress = Math.min((now - start) / duration, 1);
         const eased = 1 - Math.pow(1 - progress, 3);
-        const value = Math.round(current + (target - current) * eased);
-        el.textContent = formatNumber(value);
+        el.textContent = formatNumber(Math.round(current + (target - current) * eased));
         if (progress < 1) requestAnimationFrame(update);
     }
     requestAnimationFrame(update);
 }
 
 // ============================================
-// EXPORT
+// EXPORT EXCEL - Professional
 // ============================================
 function exportExcel() {
     if (saks.length === 0) {
@@ -462,69 +605,88 @@ function exportExcel() {
 
     const wb = XLSX.utils.book_new();
 
-    // ====== SHEET 1: ملخص الصكوك ======
-    const summaryRows = [];
-    summaryRows.push(['نظام إدارة صكوك الأضاحي - صناع الحياة', '', '', '', '', '']);
-    summaryRows.push(['تاريخ التقرير:', new Date().toLocaleDateString('ar-EG'), '', '', '', '']);
-    summaryRows.push(['', '', '', '', '', '']);
-    summaryRows.push(['ملخص الصكوك', '', '', '', '', '']);
-    summaryRows.push(['', '', '', '', '', '']);
-    summaryRows.push(['اسم الصك', 'المبلغ المطلوب', 'المبلغ المجمع', 'المتبقي', 'نسبة الاكتمال', 'عدد المشاركين']);
+    // ====== SHEET 1: ملخص الحملة ======
+    const totalRequired = saks.reduce((sum, s) => sum + s.requiredAmount, 0);
+    const totalCollected = saks.reduce((sum, s) => sum + s.participants.reduce((pSum, p) => pSum + p.amount, 0), 0);
+    const totalRemaining = Math.max(totalRequired - totalCollected, 0);
+    const totalParticipants = saks.reduce((sum, s) => sum + s.participants.length, 0);
+    const campaignPercent = CAMPAIGN_TARGET > 0 ? ((totalCollected / CAMPAIGN_TARGET) * 100).toFixed(1) + '%' : '0%';
 
-    let totalRequired = 0;
-    let totalCollected = 0;
-    let totalParticipants = 0;
+    const summaryRows = [
+        ['خطة المعارف والأثر | حملة الأضاحي 2026', '', '', '', '', '', ''],
+        ['صناع الحياة', '', '', '', '', '', ''],
+        ['', '', '', '', '', '', ''],
+        ['ملخص الحملة', '', '', '', '', '', ''],
+        ['', '', '', '', '', '', ''],
+        ['التارجت الكلي', 'المطلوب', 'المجمع', 'المتبقي', 'نسبة التارجت', 'عدد الصكوك', 'عدد المساهمين'],
+        [CAMPAIGN_TARGET, totalRequired, totalCollected, totalRemaining, campaignPercent, saks.length, totalParticipants],
+        ['', '', '', '', '', '', ''],
+        ['ملخص التحالفات', '', '', '', '', '', ''],
+        ['', '', '', '', '', '', ''],
+        ['التحالف', 'المطلوب', 'المجمع', 'المتبقي', 'عدد الصكوك', 'عدد المساهمين', 'نسبة الاكتمال']
+    ];
+
+    const allianceData = {};
+    ALLIANCES.forEach(a => allianceData[a] = { required: 0, collected: 0, count: 0, participants: 0 });
+    saks.forEach(sak => {
+        if (allianceData[sak.alliance]) {
+            const collected = sak.participants.reduce((sum, p) => sum + p.amount, 0);
+            allianceData[sak.alliance].required += sak.requiredAmount;
+            allianceData[sak.alliance].collected += collected;
+            allianceData[sak.alliance].count += 1;
+            allianceData[sak.alliance].participants += sak.participants.length;
+        }
+    });
+
+    Object.entries(allianceData).filter(([_, d]) => d.count > 0).forEach(([name, data]) => {
+        const pct = data.required > 0 ? ((data.collected / data.required) * 100).toFixed(1) + '%' : '0%';
+        summaryRows.push([name, data.required, data.collected, Math.max(data.required - data.collected, 0), data.count, data.participants, pct]);
+    });
+
+    const wsSummary = XLSX.utils.aoa_to_sheet(summaryRows);
+    wsSummary['!cols'] = [{ wch: 22 }, { wch: 16 }, { wch: 16 }, { wch: 16 }, { wch: 16 }, { wch: 16 }, { wch: 16 }];
+    wsSummary['!merges'] = [
+        { s: { r: 0, c: 0 }, e: { r: 0, c: 6 } },
+        { s: { r: 1, c: 0 }, e: { r: 1, c: 6 } },
+        { s: { r: 3, c: 0 }, e: { r: 3, c: 6 } },
+        { s: { r: 8, c: 0 }, e: { r: 8, c: 6 } }
+    ];
+    XLSX.utils.book_append_sheet(wb, wsSummary, 'ملخص الحملة');
+
+    // ====== SHEET 2: تفاصيل الصكوك ======
+    const sakRows = [
+        ['تفاصيل الصكوك', '', '', '', '', '', '', ''],
+        ['', '', '', '', '', '', '', ''],
+        ['رقم الصك', 'نوع الصك', 'التحالف', 'المطلوب', 'المجمع', 'المتبقي', 'نسبة الاكتمال', 'عدد المساهمين']
+    ];
 
     saks.forEach(sak => {
         const collected = sak.participants.reduce((sum, p) => sum + p.amount, 0);
         const remaining = Math.max(sak.requiredAmount - collected, 0);
         const percent = sak.requiredAmount > 0 ? ((collected / sak.requiredAmount) * 100).toFixed(1) + '%' : '0%';
-        totalRequired += sak.requiredAmount;
-        totalCollected += collected;
-        totalParticipants += sak.participants.length;
-
-        summaryRows.push([
-            sak.name,
-            sak.requiredAmount,
-            collected,
-            remaining,
-            percent,
-            sak.participants.length
-        ]);
+        sakRows.push([sak.id, sak.name, sak.alliance, sak.requiredAmount, collected, remaining, percent, sak.participants.length]);
     });
 
-    summaryRows.push(['', '', '', '', '', '']);
-    summaryRows.push(['الإجمالي', totalRequired, totalCollected, Math.max(totalRequired - totalCollected, 0), '', totalParticipants]);
+    const wsSaks = XLSX.utils.aoa_to_sheet(sakRows);
+    wsSaks['!cols'] = [{ wch: 18 }, { wch: 18 }, { wch: 14 }, { wch: 14 }, { wch: 14 }, { wch: 14 }, { wch: 14 }, { wch: 14 }];
+    wsSaks['!merges'] = [{ s: { r: 0, c: 0 }, e: { r: 0, c: 7 } }];
+    XLSX.utils.book_append_sheet(wb, wsSaks, 'تفاصيل الصكوك');
 
-    const wsSummary = XLSX.utils.aoa_to_sheet(summaryRows);
-
-    // Styling for summary sheet
-    wsSummary['!cols'] = [
-        { wch: 25 }, { wch: 18 }, { wch: 18 }, { wch: 18 }, { wch: 15 }, { wch: 18 }
+    // ====== SHEET 3: تفاصيل المساهمين ======
+    const partRows = [
+        ['تفاصيل المساهمين', '', '', '', '', ''],
+        ['', '', '', '', '', ''],
+        ['نوع الصك', 'التحالف', 'اسم المساهم', 'رقم الهاتف', 'المبلغ', 'ملاحظات', 'تاريخ التسجيل']
     ];
-
-    // Merge title cells
-    wsSummary['!merges'] = [
-        { s: { r: 0, c: 0 }, e: { r: 0, c: 5 } },
-        { s: { r: 1, c: 0 }, e: { r: 1, c: 5 } },
-        { s: { r: 3, c: 0 }, e: { r: 3, c: 5 } }
-    ];
-
-    XLSX.utils.book_append_sheet(wb, wsSummary, 'ملخص الصكوك');
-
-    // ====== SHEET 2: تفاصيل المشاركين ======
-    const detailRows = [];
-    detailRows.push(['تفاصيل المشاركين', '', '', '', '', '']);
-    detailRows.push(['', '', '', '', '', '']);
-    detailRows.push(['اسم الصك', 'اسم المشارك', 'رقم الهاتف', 'المبلغ المدفوع', 'ملاحظات', 'تاريخ التسجيل']);
 
     saks.forEach(sak => {
         if (sak.participants.length === 0) {
-            detailRows.push([sak.name, '(لا يوجد مشاركين)', '', '', '', '']);
+            partRows.push([sak.name, sak.alliance, '(لا يوجد مساهمين)', '', '', '', '']);
         } else {
             sak.participants.forEach(p => {
-                detailRows.push([
+                partRows.push([
                     sak.name,
+                    sak.alliance,
                     p.name,
                     p.phone || '-',
                     p.amount,
@@ -535,32 +697,24 @@ function exportExcel() {
         }
     });
 
-    const wsDetails = XLSX.utils.aoa_to_sheet(detailRows);
-    wsDetails['!cols'] = [
-        { wch: 22 }, { wch: 20 }, { wch: 15 }, { wch: 16 }, { wch: 22 }, { wch: 22 }
-    ];
-    wsDetails['!merges'] = [
-        { s: { r: 0, c: 0 }, e: { r: 0, c: 5 } }
-    ];
+    const wsParts = XLSX.utils.aoa_to_sheet(partRows);
+    wsParts['!cols'] = [{ wch: 18 }, { wch: 14 }, { wch: 20 }, { wch: 14 }, { wch: 14 }, { wch: 22 }, { wch: 22 }];
+    wsParts['!merges'] = [{ s: { r: 0, c: 0 }, e: { r: 0, c: 6 } }];
+    XLSX.utils.book_append_sheet(wb, wsParts, 'تفاصيل المساهمين');
 
-    XLSX.utils.book_append_sheet(wb, wsDetails, 'تفاصيل المشاركين');
-
-    // ====== Apply colors and styling ======
+    // ====== Apply styling ======
     applyExcelStyling(wb);
 
-    XLSX.writeFile(wb, 'صكوك-الأضاحي-صناع-الحياة-' + new Date().toISOString().split('T')[0] + '.xlsx');
+    XLSX.writeFile(wb, 'حملة-الأضاحي-2026-صناع-الحياة-' + new Date().toISOString().split('T')[0] + '.xlsx');
     showToast('تم تصدير Excel بنجاح', 'success');
 }
 
 function applyExcelStyling(wb) {
-    // Green colors
     const darkGreen = { fgColor: { rgb: '0D4F3C' } };
+    const green = { fgColor: { rgb: '1A6B4F' } };
+    const gold = { fgColor: { rgb: 'C9A84C' } };
     const lightGreen = { fgColor: { rgb: 'E8F5F0' } };
     const white = { fgColor: { rgb: 'FFFFFF' } };
-    const gold = { fgColor: { rgb: 'C9A84C' } };
-    const yellowSoft = { fgColor: { rgb: 'FFF3CD' } };
-    const redSoft = { fgColor: { rgb: 'F8D7DA' } };
-    const greenSoft = { fgColor: { rgb: 'D4EDDA' } };
 
     wb.SheetNames.forEach(sheetName => {
         const ws = wb.Sheets[sheetName];
@@ -571,28 +725,42 @@ function applyExcelStyling(wb) {
                 const cellAddress = XLSX.utils.encode_cell({ r: R, c: C });
                 const cell = ws[cellAddress];
                 if (!cell) continue;
-
                 if (!cell.s) cell.s = {};
 
-                // Title row (row 0)
+                // Title rows (0, 1)
                 if (R === 0) {
                     cell.s.font = { bold: true, sz: 16, color: { rgb: 'FFFFFF' } };
                     cell.s.fill = darkGreen;
                     cell.s.alignment = { horizontal: 'center', vertical: 'center' };
-                }
-                // Date row (row 1)
-                else if (R === 1) {
-                    cell.s.font = { sz: 11, color: { rgb: '666666' } };
+                } else if (R === 1) {
+                    cell.s.font = { sz: 12, color: { rgb: 'FFFFFF' } };
+                    cell.s.fill = green;
                     cell.s.alignment = { horizontal: 'center' };
                 }
-                // Section title (row 3 or 0 in details)
-                else if ((sheetName === 'ملخص الصكوك' && R === 3) || (sheetName === 'تفاصيل المشاركين' && R === 0)) {
-                    cell.s.font = { bold: true, sz: 14, color: { rgb: '0D4F3C' } };
+                // Section headers
+                else if ((R === 3 || R === 8) && sheetName === 'ملخص الحملة') {
+                    cell.s.font = { bold: true, sz: 13, color: { rgb: '0D4F3C' } };
                     cell.s.fill = lightGreen;
                     cell.s.alignment = { horizontal: 'center', vertical: 'center' };
                 }
-                // Header row
-                else if ((sheetName === 'ملخص الصكوك' && R === 5) || (sheetName === 'تفاصيل المشاركين' && R === 2)) {
+                else if (R === 0 && sheetName !== 'ملخص الحملة') {
+                    cell.s.font = { bold: true, sz: 14, color: { rgb: 'FFFFFF' } };
+                    cell.s.fill = darkGreen;
+                    cell.s.alignment = { horizontal: 'center', vertical: 'center' };
+                }
+                // Table headers
+                else if ((R === 5 || R === 10) && sheetName === 'ملخص الحملة') {
+                    cell.s.font = { bold: true, sz: 11, color: { rgb: 'FFFFFF' } };
+                    cell.s.fill = darkGreen;
+                    cell.s.alignment = { horizontal: 'center', vertical: 'center' };
+                    cell.s.border = {
+                        top: { style: 'thin', color: { rgb: '0D4F3C' } },
+                        bottom: { style: 'thin', color: { rgb: '0D4F3C' } },
+                        left: { style: 'thin', color: { rgb: 'CCCCCC' } },
+                        right: { style: 'thin', color: { rgb: 'CCCCCC' } }
+                    };
+                }
+                else if (R === 2 && sheetName !== 'ملخص الحملة') {
                     cell.s.font = { bold: true, sz: 11, color: { rgb: 'FFFFFF' } };
                     cell.s.fill = darkGreen;
                     cell.s.alignment = { horizontal: 'center', vertical: 'center' };
@@ -604,12 +772,8 @@ function applyExcelStyling(wb) {
                     };
                 }
                 // Data rows
-                else if (R > 5 || (sheetName === 'تفاصيل المشاركين' && R > 2)) {
-                    // Alternating row colors
-                    if (R % 2 === 0) {
-                        cell.s.fill = { fgColor: { rgb: 'F8FAF9' } };
-                    }
-
+                else if (R > 5 || (sheetName !== 'ملخص الحملة' && R > 2)) {
+                    if (R % 2 === 0) cell.s.fill = { fgColor: { rgb: 'F8FAF9' } };
                     cell.s.border = {
                         top: { style: 'thin', color: { rgb: 'E0E6E3' } },
                         bottom: { style: 'thin', color: { rgb: 'E0E6E3' } },
@@ -617,36 +781,36 @@ function applyExcelStyling(wb) {
                         right: { style: 'thin', color: { rgb: 'E0E6E3' } }
                     };
 
-                    // Number formatting for amount columns
-                    const headerRow = sheetName === 'ملخص الصكوك' ? 5 : 2;
+                    // Number formatting
+                    const headerRow = sheetName === 'ملخص الحملة' ? (R > 10 ? 10 : 5) : 2;
                     const headerCell = ws[XLSX.utils.encode_cell({ r: headerRow, c: C })];
                     if (headerCell && headerCell.v) {
-                        const headerText = String(headerCell.v);
-                        if (headerText.includes('مبلغ') || headerText.includes('المتبقي') || headerText === 'المبلغ المدفوع') {
+                        const text = String(headerCell.v);
+                        if (text.includes('مبلغ') || text.includes('المتبقي') || text.includes('المطلوب') || text === 'المجمع') {
                             cell.s.numFmt = '#,##0';
                             cell.s.alignment = { horizontal: 'center' };
                         }
-                        if (headerText.includes('نسبة')) {
+                        if (text.includes('نسبة') || text.includes('اكتمال')) {
                             cell.s.alignment = { horizontal: 'center' };
                         }
                     }
 
-                    // Color remaining amount cells
-                    if (sheetName === 'ملخص الصكوك' && C === 3 && typeof cell.v === 'number' && cell.v > 0) {
+                    // Color remaining
+                    if (sheetName === 'ملخص الحملة' && R === 6 && C === 3 && typeof cell.v === 'number' && cell.v > 0) {
                         cell.s.font = { color: { rgb: 'E65100' }, bold: true };
                     }
-                    // Color completion percentage
-                    if (sheetName === 'ملخص الصكوك' && C === 4 && typeof cell.v === 'string') {
+                    // Color campaign percent
+                    if (sheetName === 'ملخص الحملة' && R === 6 && C === 4 && typeof cell.v === 'string') {
                         const pct = parseFloat(cell.v);
                         if (pct >= 100) cell.s.font = { color: { rgb: '155724' }, bold: true };
                         else if (pct >= 60) cell.s.font = { color: { rgb: '856404' }, bold: true };
                         else cell.s.font = { color: { rgb: '721C24' }, bold: true };
                     }
                 }
-                // Total row (last row in summary)
-                if (sheetName === 'ملخص الصكوك' && R === range.e.r && R > 5) {
+                // Total row in campaign summary
+                if (sheetName === 'ملخص الحملة' && R === 6) {
                     cell.s.font = { bold: true, sz: 11, color: { rgb: 'FFFFFF' } };
-                    cell.s.fill = { fgColor: { rgb: '1A6B4F' } };
+                    cell.s.fill = green;
                     cell.s.alignment = { horizontal: 'center' };
                     cell.s.border = {
                         top: { style: 'medium', color: { rgb: '0D4F3C' } },
@@ -656,30 +820,31 @@ function applyExcelStyling(wb) {
             }
         }
 
-        // Set row heights
         if (!ws['!rows']) ws['!rows'] = [];
         ws['!rows'][0] = { hpt: 35 };
-        if (sheetName === 'ملخص الصكوك') {
+        ws['!rows'][1] = { hpt: 28 };
+        if (sheetName === 'ملخص الحملة') {
             ws['!rows'][3] = { hpt: 28 };
             ws['!rows'][5] = { hpt: 25 };
+            ws['!rows'][8] = { hpt: 28 };
+            ws['!rows'][10] = { hpt: 25 };
         } else {
-            ws['!rows'][0] = { hpt: 28 };
             ws['!rows'][2] = { hpt: 25 };
         }
     });
 }
 
+// ============================================
+// BACKUP & RESTORE
+// ============================================
 function exportBackup() {
-    if (saks.length === 0) {
-        showToast('لا توجد بيانات', 'warning');
-        return;
-    }
-    const backup = { version: '1.0', date: new Date().toISOString(), data: saks };
+    if (saks.length === 0) { showToast('لا توجد بيانات', 'warning'); return; }
+    const backup = { version: '1.0', campaign: 'حملة الأضاحي 2026', org: 'صناع الحياة', date: new Date().toISOString(), data: saks };
     const blob = new Blob([JSON.stringify(backup, null, 2)], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = 'san3at-sak-backup-' + new Date().toISOString().split('T')[0] + '.json';
+    a.download = 'حملة-الأضاحي-2026-' + new Date().toISOString().split('T')[0] + '.json';
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
@@ -701,12 +866,8 @@ function importBackup(e) {
                     updateUI();
                     showToast('تم استيراد البيانات بنجاح', 'success');
                 }
-            } else {
-                showToast('ملف غير صالح', 'danger');
-            }
-        } catch(err) {
-            showToast('خطأ في قراءة الملف', 'danger');
-        }
+            } else { showToast('ملف غير صالح', 'danger'); }
+        } catch(err) { showToast('خطأ في قراءة الملف', 'danger'); }
     };
     reader.readAsText(file);
     e.target.value = '';
