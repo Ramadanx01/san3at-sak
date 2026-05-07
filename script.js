@@ -1,60 +1,139 @@
 /* ============================================
+   نظام صكوك الأضاحي - صناع الحياة
    خطة المعارف والأثر | حملة الأضاحي 2026
-   صناع الحياة - نظام إدارة صكوك الأضاحي
    ============================================ */
-
-// ============================================
-// CONFIGURATION
-// ============================================
-const CAMPAIGN_TARGET = 200000;
-
-const SAK_TYPES = {
-    'صك جاموسي': { name: 'صك جاموسي', defaultAmount: 13500 },
-    'صك بقري': { name: 'صك بقري', defaultAmount: 15000 },
-    'صك ضاني': { name: 'صك ضاني', defaultAmount: 15000 },
-    'صك الخير': { name: 'صك الخير', defaultAmount: 11500 },
-    'لحوم صدقات': { name: 'لحوم صدقات', defaultAmount: 400, unit: 'كيلو' }
-};
-
-const ALLIANCES = ['تحالف 1', 'تحالف 2', 'تحالف 3', 'تحالف 4', 'تحالف 5'];
 
 // ============================================
 // DATA STORE
 // ============================================
 let saks = [];
+let sakTypes = [];
+let systemSettings = {
+    orgName: 'صناع الحياة',
+    pageTitle: 'نظام صكوك الأضاحي',
+    darkMode: false
+};
+
 let deleteTarget = { type: null, sakId: null, participantId: null };
 let deleteModal = null;
-let editModal = null;
+let settingsModal = null;
+let sakTypeModal = null;
 
 // ============================================
 // INIT
 // ============================================
 document.addEventListener('DOMContentLoaded', function() {
     deleteModal = new bootstrap.Modal(document.getElementById('deleteModal'));
-    editModal = new bootstrap.Modal(document.getElementById('editParticipantModal'));
+    settingsModal = new bootstrap.Modal(document.getElementById('settingsModal'));
+    sakTypeModal = new bootstrap.Modal(document.getElementById('sakTypeModal'));
 
-    loadData();
+    loadAllData();
     setupListeners();
     updateUI();
 
-    // Date
+    // Date display
     const now = new Date();
     const options = { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' };
     document.getElementById('currentDate').textContent = now.toLocaleDateString('ar-EG', options);
     document.getElementById('year').textContent = now.getFullYear();
-    document.getElementById('campaignTarget').textContent = formatNumber(CAMPAIGN_TARGET);
-    document.getElementById('campaignTargetDisplay').textContent = formatNumber(CAMPAIGN_TARGET);
+
+    // Apply dark mode if set
+    if (systemSettings.darkMode) {
+        document.body.classList.add('dark-mode');
+    }
 });
+
+// ============================================
+// LOCAL STORAGE
+// ============================================
+function loadAllData() {
+    try {
+        const storedSaks = localStorage.getItem('hayatSaks_2026');
+        if (storedSaks) saks = JSON.parse(storedSaks);
+
+        const storedTypes = localStorage.getItem('hayatSakTypes_2026');
+        if (storedTypes) {
+            sakTypes = JSON.parse(storedTypes);
+        } else {
+            // Default sak types with default targets
+            sakTypes = [
+                { id: 'st1', name: 'صك جاموسي', defaultPrice: 13500, defaultTarget: 13500, intention: '', deliveryDate: '' },
+                { id: 'st2', name: 'صك بقري', defaultPrice: 15000, defaultTarget: 15000, intention: '', deliveryDate: '' },
+                { id: 'st3', name: 'صك ضاني', defaultPrice: 15000, defaultTarget: 15000, intention: '', deliveryDate: '' },
+                { id: 'st4', name: 'صك الخير', defaultPrice: 11500, defaultTarget: 11500, intention: '', deliveryDate: '' },
+                { id: 'st5', name: 'لحوم صدقات', defaultPrice: 400, defaultTarget: 400, intention: '', deliveryDate: '' }
+            ];
+            saveSakTypes();
+        }
+
+        const storedSettings = localStorage.getItem('hayatSettings_2026');
+        if (storedSettings) {
+            systemSettings = JSON.parse(storedSettings);
+        } else {
+            saveSystemSettingsData();
+        }
+    } catch(e) {
+        console.error('Error loading data:', e);
+        saks = [];
+    }
+}
+
+function saveSaks() {
+    try {
+        localStorage.setItem('hayatSaks_2026', JSON.stringify(saks));
+        return true;
+    } catch(e) {
+        showToast('خطأ في حفظ بيانات الصكوك', 'danger');
+        return false;
+    }
+}
+
+function saveSakTypes() {
+    try {
+        localStorage.setItem('hayatSakTypes_2026', JSON.stringify(sakTypes));
+        return true;
+    } catch(e) {
+        showToast('خطأ في حفظ أنواع الصكوك', 'danger');
+        return false;
+    }
+}
+
+function saveSystemSettingsData() {
+    try {
+        localStorage.setItem('hayatSettings_2026', JSON.stringify(systemSettings));
+        return true;
+    } catch(e) {
+        showToast('خطأ في حفظ الإعدادات', 'danger');
+        return false;
+    }
+}
+
+function generateId() {
+    return 'ID-' + Date.now().toString(36).toUpperCase() + Math.random().toString(36).substring(2, 5).toUpperCase();
+}
 
 // ============================================
 // EVENT LISTENERS
 // ============================================
 function setupListeners() {
-    // Sak type dropdown auto-fill amount
+    // Ensure modals are properly initialized
+    document.querySelectorAll('.modal').forEach(modalEl => {
+        modalEl.addEventListener('shown.bs.modal', function () {
+            // Force modal to front if needed
+            this.style.zIndex = '1055';
+            const backdrop = document.querySelector('.modal-backdrop');
+            if (backdrop) backdrop.style.zIndex = '1050';
+        });
+    });
+
+    // Sak type dropdown auto-fill target and other fields
     document.getElementById('sakType').addEventListener('change', function() {
-        const type = this.value;
-        if (SAK_TYPES[type]) {
-            document.getElementById('sakAmount').value = SAK_TYPES[type].defaultAmount;
+        const typeId = this.value;
+        const type = sakTypes.find(t => t.id === typeId);
+        if (type) {
+            document.getElementById('sakTarget').value = type.defaultTarget || type.defaultPrice || 0;
+            document.getElementById('sakIntention').value = type.intention || '';
+            document.getElementById('sakDeliveryDate').value = type.deliveryDate || '';
         }
     });
 
@@ -82,67 +161,34 @@ function setupListeners() {
     // Export buttons
     document.getElementById('btnPrint').addEventListener('click', () => window.print());
     document.getElementById('btnExcel').addEventListener('click', exportExcel);
-    document.getElementById('btnBackup').addEventListener('click', exportBackup);
-    document.getElementById('btnRestore').addEventListener('change', importBackup);
+    document.getElementById('btnPdf').addEventListener('click', exportPDF);
 
     // Delete confirmation
     document.getElementById('confirmDelete').addEventListener('click', executeDelete);
-
-    // Amount input - numbers only
-    document.getElementById('sakAmount').addEventListener('input', function() {
-        this.value = this.value.replace(/[^0-9]/g, '');
-    });
-
-    // Edit modal phone
-    document.getElementById('editPartPhone').addEventListener('input', function() {
-        this.value = this.value.replace(/[^0-9]/g, '').slice(0, 11);
-    });
-}
-
-// ============================================
-// LOCAL STORAGE
-// ============================================
-function loadData() {
-    try {
-        const stored = localStorage.getItem('hayatSakData_2026');
-        if (stored) saks = JSON.parse(stored);
-    } catch(e) { saks = []; }
-}
-
-function saveData() {
-    try {
-        localStorage.setItem('hayatSakData_2026', JSON.stringify(saks));
-        return true;
-    } catch(e) {
-        showToast('خطأ في حفظ البيانات', 'danger');
-        return false;
-    }
-}
-
-function generateId() {
-    return 'SAK-' + Date.now().toString(36).toUpperCase() + Math.random().toString(36).substring(2, 5).toUpperCase();
 }
 
 // ============================================
 // CREATE SAK
 // ============================================
 function createSak() {
-    const type = document.getElementById('sakType').value;
-    const amount = parseFloat(document.getElementById('sakAmount').value);
-    const alliance = document.getElementById('sakAlliance').value;
-    const notes = document.getElementById('sakNotes').value.trim();
+    const typeId = document.getElementById('sakType').value;
+    const targetAmount = parseFloat(document.getElementById('sakTarget').value);
+    const intention = document.getElementById('sakIntention').value.trim();
+    const deliveryDate = document.getElementById('sakDeliveryDate').value;
 
-    if (!type) { showToast('يرجى اختيار نوع الصك', 'warning'); return; }
-    if (!amount || amount <= 0) { showToast('يرجى إدخال مبلغ صحيح', 'warning'); return; }
-    if (!alliance) { showToast('يرجى اختيار التحالف', 'warning'); return; }
+    if (!typeId) { showToast('يرجى اختيار نوع الصك', 'warning'); return; }
+    if (!targetAmount || targetAmount <= 0) { showToast('يرجى إدخال تارجت صحيح', 'warning'); return; }
+
+    const type = sakTypes.find(t => t.id === typeId);
+    if (!type) { showToast('نوع الصك غير موجود', 'danger'); return; }
 
     const sak = {
         id: generateId(),
-        type: type,
-        name: SAK_TYPES[type] ? SAK_TYPES[type].name : type,
-        requiredAmount: amount,
-        alliance: alliance,
-        notes: notes,
+        typeId: typeId,
+        typeName: type.name,
+        targetAmount: targetAmount,
+        intention: intention || (type.intention || ''),
+        deliveryDate: deliveryDate || (type.deliveryDate || ''),
         participants: [],
         createdAt: new Date().toISOString(),
         collapsed: false
@@ -150,7 +196,7 @@ function createSak() {
 
     saks.unshift(sak);
 
-    if (saveData()) {
+    if (saveSaks()) {
         document.getElementById('createSakForm').reset();
         updateUI();
         showToast('تم إنشاء الصك بنجاح', 'success');
@@ -165,8 +211,9 @@ function addParticipant(sakId) {
     if (!sak) return;
 
     const name = document.getElementById('partName-' + sakId).value.trim();
-    const phone = document.getElementById('partPhone-' + sakId).value.trim();
     const amount = parseFloat(document.getElementById('partAmount-' + sakId).value);
+    const intention = document.getElementById('partIntention-' + sakId).value.trim();
+    const deliveryDate = document.getElementById('partDeliveryDate-' + sakId).value;
     const notes = document.getElementById('partNotes-' + sakId).value.trim();
 
     if (!name) { showToast('يرجى إدخال اسم المساهم', 'warning'); return; }
@@ -175,65 +222,21 @@ function addParticipant(sakId) {
     sak.participants.push({
         id: generateId(),
         name: name,
-        phone: phone,
         amount: amount,
+        intention: intention || sak.intention || '',
+        deliveryDate: deliveryDate || sak.deliveryDate || '',
         notes: notes,
         createdAt: new Date().toISOString()
     });
 
-    if (saveData()) {
+    if (saveSaks()) {
         document.getElementById('partName-' + sakId).value = '';
-        document.getElementById('partPhone-' + sakId).value = '';
         document.getElementById('partAmount-' + sakId).value = '';
+        document.getElementById('partIntention-' + sakId).value = '';
+        document.getElementById('partDeliveryDate-' + sakId).value = '';
         document.getElementById('partNotes-' + sakId).value = '';
         updateUI();
         showToast('تم إضافة المساهمة بنجاح', 'success');
-    }
-}
-
-// ============================================
-// EDIT PARTICIPANT
-// ============================================
-function editParticipant(sakId, participantId) {
-    const sak = saks.find(s => s.id === sakId);
-    if (!sak) return;
-    const p = sak.participants.find(x => x.id === participantId);
-    if (!p) return;
-
-    document.getElementById('editSakId').value = sakId;
-    document.getElementById('editParticipantId').value = participantId;
-    document.getElementById('editPartName').value = p.name;
-    document.getElementById('editPartPhone').value = p.phone || '';
-    document.getElementById('editPartAmount').value = p.amount;
-    document.getElementById('editPartNotes').value = p.notes || '';
-
-    editModal.show();
-}
-
-function saveEditParticipant() {
-    const sakId = document.getElementById('editSakId').value;
-    const participantId = document.getElementById('editParticipantId').value;
-
-    const sak = saks.find(s => s.id === sakId);
-    if (!sak) return;
-    const p = sak.participants.find(x => x.id === participantId);
-    if (!p) return;
-
-    const name = document.getElementById('editPartName').value.trim();
-    const amount = parseFloat(document.getElementById('editPartAmount').value);
-
-    if (!name) { showToast('يرجى إدخال الاسم', 'warning'); return; }
-    if (!amount || amount <= 0) { showToast('يرجى إدخال مبلغ صحيح', 'warning'); return; }
-
-    p.name = name;
-    p.phone = document.getElementById('editPartPhone').value.trim();
-    p.amount = amount;
-    p.notes = document.getElementById('editPartNotes').value.trim();
-
-    if (saveData()) {
-        editModal.hide();
-        updateUI();
-        showToast('تم تحديث المساهمة بنجاح', 'success');
     }
 }
 
@@ -257,7 +260,7 @@ function executeDelete() {
         const idx = saks.findIndex(s => s.id === deleteTarget.sakId);
         if (idx !== -1) {
             saks.splice(idx, 1);
-            saveData();
+            saveSaks();
             updateUI();
             showToast('تم حذف الصك بنجاح', 'success');
         }
@@ -267,10 +270,26 @@ function executeDelete() {
             const idx = sak.participants.findIndex(p => p.id === deleteTarget.participantId);
             if (idx !== -1) {
                 sak.participants.splice(idx, 1);
-                saveData();
+                saveSaks();
                 updateUI();
                 showToast('تم حذف المساهمة بنجاح', 'success');
             }
+        }
+    } else if (deleteTarget.type === 'sakType') {
+        const idx = sakTypes.findIndex(t => t.id === deleteTarget.sakTypeId);
+        if (idx !== -1) {
+            // Check if any sak uses this type
+            const used = saks.some(s => s.typeId === deleteTarget.sakTypeId);
+            if (used) {
+                showToast('لا يمكن الحذف: نوع الصك مستخدم في صكوك مسجلة', 'warning');
+                deleteModal.hide();
+                return;
+            }
+            sakTypes.splice(idx, 1);
+            saveSakTypes();
+            renderSakTypesList();
+            populateSakTypeDropdown();
+            showToast('تم حذف نوع الصك بنجاح', 'success');
         }
     }
     deleteModal.hide();
@@ -283,7 +302,7 @@ function toggleSak(sakId) {
     const sak = saks.find(s => s.id === sakId);
     if (sak) {
         sak.collapsed = !sak.collapsed;
-        saveData();
+        saveSaks();
         renderSaks();
     }
 }
@@ -292,10 +311,33 @@ function toggleSak(sakId) {
 // RENDER
 // ============================================
 function updateUI() {
+    populateSakTypeDropdown();
     renderSaks();
     updateStats();
-    renderAlliances();
     updateCampaignProgress();
+    updateHeaderInfo();
+}
+
+function populateSakTypeDropdown() {
+    const select = document.getElementById('sakType');
+    const currentValue = select.value;
+    select.innerHTML = '<option value="" disabled selected>اختر نوع الصك</option>';
+    sakTypes.forEach(type => {
+        const option = document.createElement('option');
+        option.value = type.id;
+        option.textContent = type.name + ' - ' + formatNumber(type.defaultPrice) + ' ج';
+        select.appendChild(option);
+    });
+    if (currentValue && sakTypes.find(t => t.id === currentValue)) {
+        select.value = currentValue;
+    }
+}
+
+function updateHeaderInfo() {
+    document.getElementById('orgNameDisplay').textContent = systemSettings.orgName || 'صناع الحياة';
+    document.getElementById('headerTitle').textContent = systemSettings.pageTitle || 'نظام صكوك الأضاحي';
+    document.getElementById('footerOrgName').textContent = systemSettings.orgName || 'صناع الحياة';
+    document.getElementById('pageTitle').textContent = (systemSettings.pageTitle || 'نظام صكوك الأضاحي') + ' | ' + (systemSettings.orgName || 'صناع الحياة');
 }
 
 function renderSaks() {
@@ -305,12 +347,13 @@ function renderSaks() {
     let filtered = saks;
     if (search) {
         filtered = saks.filter(sak => {
-            const matchSak = sak.name.toLowerCase().includes(search) ||
-                           sak.alliance.toLowerCase().includes(search) ||
-                           sak.type.toLowerCase().includes(search);
+            const type = sakTypes.find(t => t.id === sak.typeId);
+            const typeName = type ? type.name.toLowerCase() : '';
+            const matchSak = typeName.includes(search) ||
+                           sak.intention.toLowerCase().includes(search);
             const matchParticipant = sak.participants.some(p => 
                 p.name.toLowerCase().includes(search) || 
-                p.phone.includes(search)
+                p.intention.toLowerCase().includes(search)
             );
             return matchSak || matchParticipant;
         });
@@ -331,9 +374,12 @@ function renderSaks() {
 }
 
 function renderSakCard(sak) {
+    const type = sakTypes.find(t => t.id === sak.typeId);
+    const typeName = type ? type.name : sak.typeName || 'صك غير معروف';
+
     const collected = sak.participants.reduce((sum, p) => sum + p.amount, 0);
-    const remaining = sak.requiredAmount - collected;
-    const percent = sak.requiredAmount > 0 ? Math.min((collected / sak.requiredAmount) * 100, 100) : 0;
+    const remaining = sak.targetAmount - collected;
+    const percent = sak.targetAmount > 0 ? Math.min((collected / sak.targetAmount) * 100, 100) : 0;
 
     let progressClass = 'low';
     if (percent >= 100) progressClass = 'complete';
@@ -351,14 +397,13 @@ function renderSakCard(sak) {
                 <div class="sak-info">
                     <h3 class="sak-name">
                         <i class="uil uil-award"></i>
-                        ${escapeHtml(sak.name)}
-                        <span class="badge-alliance">${escapeHtml(sak.alliance)}</span>
+                        ${escapeHtml(typeName)}
                     </h3>
                     <div class="sak-meta">
-                        <span><i class="uil uil-tag"></i> ${escapeHtml(sak.type)}</span>
-                        <span><i class="uil uil-calendar-alt"></i> ${formatDate(sak.createdAt)}</span>
+                        ${sak.intention ? `<span><i class="uil uil-heart"></i> ${escapeHtml(sak.intention)}</span>` : ''}
+                        ${sak.deliveryDate ? `<span><i class="uil uil-calendar-alt"></i> ${formatDate(sak.deliveryDate)}</span>` : ''}
                         <span><i class="uil uil-users-alt"></i> ${sak.participants.length} مساهم</span>
-                        ${sak.notes ? `<span><i class="uil uil-notes"></i> ${escapeHtml(sak.notes)}</span>` : ''}
+                        <span><i class="uil uil-clock"></i> ${formatDateTime(sak.createdAt)}</span>
                     </div>
                 </div>
                 <div class="sak-actions">
@@ -373,7 +418,7 @@ function renderSakCard(sak) {
             <div class="sak-body">
                 <div class="sak-progress">
                     <div class="progress-label">
-                        <span>نسبة الاكتمال</span>
+                        <span>نسبة الإنجاز</span>
                         <span class="percent" style="color:${percentColor}">${percent.toFixed(1)}%</span>
                     </div>
                     <div class="progress">
@@ -382,8 +427,8 @@ function renderSakCard(sak) {
                 </div>
                 <div class="amounts-grid">
                     <div class="amount-item amount-required">
-                        <span class="amount-value">${formatNumber(sak.requiredAmount)}</span>
-                        <span class="amount-label">المطلوب (ج.م)</span>
+                        <span class="amount-value">${formatNumber(sak.targetAmount)}</span>
+                        <span class="amount-label">التارجت (ج.م)</span>
                     </div>
                     <div class="amount-item amount-collected">
                         <span class="amount-value">${formatNumber(collected)}</span>
@@ -408,20 +453,23 @@ function renderParticipantsSection(sak) {
             </div>
             <div class="row g-2">
                 <div class="col-sm-3">
-                    <input type="text" class="form-control form-control-sm" id="partName-${sak.id}" placeholder="اسم الشخص *">
-                </div>
-                <div class="col-sm-2">
-                    <input type="tel" class="form-control form-control-sm" id="partPhone-${sak.id}" placeholder="رقم الهاتف" maxlength="11">
+                    <input type="text" class="form-control form-control-sm" id="partName-${sak.id}" placeholder="الاسم *">
                 </div>
                 <div class="col-sm-2">
                     <input type="number" class="form-control form-control-sm" id="partAmount-${sak.id}" placeholder="المبلغ *" min="1">
                 </div>
-                <div class="col-sm-3">
-                    <input type="text" class="form-control form-control-sm" id="partNotes-${sak.id}" placeholder="ملاحظات">
+                <div class="col-sm-2">
+                    <input type="text" class="form-control form-control-sm" id="partIntention-${sak.id}" placeholder="النية" value="${escapeHtml(sak.intention || '')}">
                 </div>
                 <div class="col-sm-2">
+                    <input type="date" class="form-control form-control-sm" id="partDeliveryDate-${sak.id}" value="${sak.deliveryDate || ''}">
+                </div>
+                <div class="col-sm-2">
+                    <input type="text" class="form-control form-control-sm" id="partNotes-${sak.id}" placeholder="ملاحظات">
+                </div>
+                <div class="col-sm-1">
                     <button class="btn btn-add-participant btn-sm w-100" onclick="addParticipant('${sak.id}')">
-                        <i class="uil uil-plus"></i> إضافة
+                        <i class="uil uil-plus"></i>
                     </button>
                 </div>
             </div>
@@ -440,14 +488,12 @@ function renderParticipantsSection(sak) {
     const rows = sak.participants.map((p, idx) => `
         <tr>
             <td><strong>${escapeHtml(p.name)}</strong></td>
-            <td dir="ltr">${p.phone || '-'}</td>
             <td class="fw-bold text-green">${formatNumber(p.amount)} ج.م</td>
+            <td>${escapeHtml(p.intention || '-')}</td>
+            <td>${p.deliveryDate ? formatDate(p.deliveryDate) : '-'}</td>
             <td><small class="text-muted">${formatDateTime(p.createdAt)}</small></td>
             <td><small class="text-muted">${escapeHtml(p.notes || '-')}</small></td>
             <td>
-                <button class="btn-edit-participant" onclick="editParticipant('${sak.id}', '${p.id}')" title="تعديل">
-                    <i class="uil uil-edit"></i>
-                </button>
                 <button class="btn-delete-participant" onclick="confirmDeleteParticipant('${sak.id}', '${p.id}')" title="حذف">
                     <i class="uil uil-trash-alt"></i>
                 </button>
@@ -461,11 +507,12 @@ function renderParticipantsSection(sak) {
                 <thead>
                     <tr>
                         <th>الاسم</th>
-                        <th>الهاتف</th>
                         <th>المبلغ</th>
-                        <th>الوقت</th>
+                        <th>النية</th>
+                        <th>تاريخ التسليم</th>
+                        <th>وقت التسجيل</th>
                         <th>ملاحظات</th>
-                        <th style="width:70px"></th>
+                        <th style="width:50px"></th>
                     </tr>
                 </thead>
                 <tbody>${rows}</tbody>
@@ -475,87 +522,16 @@ function renderParticipantsSection(sak) {
 }
 
 // ============================================
-// ALLIANCES
-// ============================================
-function renderAlliances() {
-    const container = document.getElementById('alliancesContainer');
-    if (saks.length === 0) {
-        container.innerHTML = '<p class="text-muted text-center py-3">لا توجد صكوك مسجلة</p>';
-        return;
-    }
-
-    const allianceData = {};
-    ALLIANCES.forEach(a => {
-        allianceData[a] = { required: 0, collected: 0, count: 0, participants: 0 };
-    });
-
-    saks.forEach(sak => {
-        if (allianceData[sak.alliance]) {
-            const collected = sak.participants.reduce((sum, p) => sum + p.amount, 0);
-            allianceData[sak.alliance].required += sak.requiredAmount;
-            allianceData[sak.alliance].collected += collected;
-            allianceData[sak.alliance].count += 1;
-            allianceData[sak.alliance].participants += sak.participants.length;
-        }
-    });
-
-    const activeAlliances = Object.entries(allianceData).filter(([_, d]) => d.count > 0);
-
-    if (activeAlliances.length === 0) {
-        container.innerHTML = '<p class="text-muted text-center py-3">لا توجد تحالفات نشطة</p>';
-        return;
-    }
-
-    container.innerHTML = `<div class="alliance-grid">
-        ${activeAlliances.map(([name, data]) => {
-            const percent = data.required > 0 ? Math.min((data.collected / data.required) * 100, 100) : 0;
-            let barColor = 'bg-danger';
-            if (percent >= 100) barColor = 'bg-success';
-            else if (percent >= 60) barColor = 'bg-warning';
-
-            return `
-                <div class="alliance-card">
-                    <div class="alliance-name">
-                        <i class="uil uil-users-alt"></i>
-                        ${escapeHtml(name)}
-                    </div>
-                    <div class="alliance-stats">
-                        <div class="alliance-stat">
-                            <span class="value" style="color:#c2185b">${formatNumber(data.required)}</span>
-                            <span class="label">المطلوب</span>
-                        </div>
-                        <div class="alliance-stat">
-                            <span class="value" style="color:var(--green)">${formatNumber(data.collected)}</span>
-                            <span class="label">المجمع</span>
-                        </div>
-                        <div class="alliance-stat">
-                            <span class="value" style="color:#e65100">${formatNumber(Math.max(data.required - data.collected, 0))}</span>
-                            <span class="label">المتبقي</span>
-                        </div>
-                        <div class="alliance-stat">
-                            <span class="value" style="color:#1565c0">${data.participants}</span>
-                            <span class="label">المساهمين</span>
-                        </div>
-                    </div>
-                    <div class="alliance-progress">
-                        <div class="progress">
-                            <div class="progress-bar ${barColor}" style="width: ${percent}%"></div>
-                        </div>
-                        <small class="text-muted">${percent.toFixed(1)}% - ${data.count} صك</small>
-                    </div>
-                </div>
-            `;
-        }).join('')}
-    </div>`;
-}
-
-// ============================================
-// CAMPAIGN PROGRESS
+// CAMPAIGN PROGRESS - SUM OF ALL SAK TARGETS
 // ============================================
 function updateCampaignProgress() {
+    // Campaign target = sum of all sak targets
+    const totalTarget = saks.reduce((sum, s) => sum + s.targetAmount, 0);
     const totalCollected = saks.reduce((sum, s) => sum + s.participants.reduce((pSum, p) => pSum + p.amount, 0), 0);
-    const percent = Math.min((totalCollected / CAMPAIGN_TARGET) * 100, 100);
+    const percent = totalTarget > 0 ? Math.min((totalCollected / totalTarget) * 100, 100) : 0;
 
+    document.getElementById('campaignTargetDisplay').textContent = formatNumber(totalTarget);
+    document.getElementById('campaignTarget').textContent = formatNumber(totalTarget);
     document.getElementById('campaignCollected').textContent = formatNumber(totalCollected);
     document.getElementById('campaignProgressBar').style.width = percent + '%';
 }
@@ -565,21 +541,21 @@ function updateCampaignProgress() {
 // ============================================
 function updateStats() {
     const totalSaks = saks.length;
-    const totalRequired = saks.reduce((sum, s) => sum + s.requiredAmount, 0);
+    const totalRequired = saks.reduce((sum, s) => sum + s.targetAmount, 0);
     const totalCollected = saks.reduce((sum, s) => sum + s.participants.reduce((pSum, p) => pSum + p.amount, 0), 0);
     const totalRemaining = totalRequired - totalCollected;
-    const totalParticipants = saks.reduce((sum, s) => sum + s.participants.length, 0);
+    const percent = totalRequired > 0 ? ((totalCollected / totalRequired) * 100).toFixed(1) : '0.0';
 
     animateNumber('statSaks', totalSaks);
     animateNumber('statRequired', totalRequired);
     animateNumber('statCollected', totalCollected);
     animateNumber('statRemaining', Math.max(totalRemaining, 0));
-    animateNumber('statParticipants', totalParticipants);
+    document.getElementById('statPercent').textContent = percent + '%';
 }
 
 function animateNumber(id, target) {
     const el = document.getElementById(id);
-    const current = parseInt(el.textContent.replace(/,/g, '')) || 0;
+    const current = parseInt(el.textContent.replace(/,/g, '').replace('%', '')) || 0;
     if (current === target) return;
 
     const duration = 600;
@@ -595,7 +571,139 @@ function animateNumber(id, target) {
 }
 
 // ============================================
-// EXPORT EXCEL - Professional
+// SETTINGS
+// ============================================
+function openSettings() {
+    document.getElementById('settingOrgName').value = systemSettings.orgName || '';
+    document.getElementById('settingPageTitle').value = systemSettings.pageTitle || '';
+    document.getElementById('settingDarkMode').checked = systemSettings.darkMode || false;
+
+    renderSakTypesList();
+
+    settingsModal.show();
+}
+
+function saveSystemSettings() {
+    systemSettings.orgName = document.getElementById('settingOrgName').value.trim() || 'صناع الحياة';
+    systemSettings.pageTitle = document.getElementById('settingPageTitle').value.trim() || 'نظام صكوك الأضاحي';
+    systemSettings.darkMode = document.getElementById('settingDarkMode').checked;
+
+    if (saveSystemSettingsData()) {
+        if (systemSettings.darkMode) {
+            document.body.classList.add('dark-mode');
+        } else {
+            document.body.classList.remove('dark-mode');
+        }
+        updateHeaderInfo();
+        showToast('تم حفظ الإعدادات بنجاح', 'success');
+    }
+}
+
+// ============================================
+// SAK TYPES MANAGEMENT
+// ============================================
+function renderSakTypesList() {
+    const container = document.getElementById('sakTypesList');
+    if (sakTypes.length === 0) {
+        container.innerHTML = '<p class="text-muted text-center py-3">لا توجد أنواع صكوك</p>';
+        return;
+    }
+
+    container.innerHTML = sakTypes.map(type => `
+        <div class="settings-item">
+            <div class="settings-item-info">
+                <div class="settings-item-name">${escapeHtml(type.name)}</div>
+                <div class="settings-item-meta">
+                    السعر: ${formatNumber(type.defaultPrice)} ج.م | 
+                    التارجت: ${formatNumber(type.defaultTarget || type.defaultPrice)} ج.م
+                    ${type.intention ? ' | النية: ' + escapeHtml(type.intention) : ''}
+                    ${type.deliveryDate ? ' | التسليم: ' + formatDate(type.deliveryDate) : ''}
+                </div>
+            </div>
+            <div class="settings-item-actions">
+                <button class="btn btn-sm btn-outline-primary" onclick="editSakType('${type.id}')">
+                    <i class="uil uil-edit"></i>
+                </button>
+                <button class="btn btn-sm btn-outline-danger" onclick="confirmDeleteSakType('${type.id}')">
+                    <i class="uil uil-trash-alt"></i>
+                </button>
+            </div>
+        </div>
+    `).join('');
+}
+
+function openAddSakTypeModal() {
+    document.getElementById('sakTypeModalTitle').innerHTML = '<i class="uil uil-plus-circle me-2"></i> إضافة نوع صك';
+    document.getElementById('editSakTypeId').value = '';
+    document.getElementById('sakTypeName').value = '';
+    document.getElementById('sakTypePrice').value = '';
+    document.getElementById('sakTypeTarget').value = '';
+    document.getElementById('sakTypeIntention').value = '';
+    document.getElementById('sakTypeDeliveryDate').value = '';
+    sakTypeModal.show();
+}
+
+function editSakType(typeId) {
+    const type = sakTypes.find(t => t.id === typeId);
+    if (!type) return;
+
+    document.getElementById('sakTypeModalTitle').innerHTML = '<i class="uil uil-edit me-2"></i> تعديل نوع الصك';
+    document.getElementById('editSakTypeId').value = typeId;
+    document.getElementById('sakTypeName').value = type.name;
+    document.getElementById('sakTypePrice').value = type.defaultPrice;
+    document.getElementById('sakTypeTarget').value = type.defaultTarget || type.defaultPrice;
+    document.getElementById('sakTypeIntention').value = type.intention || '';
+    document.getElementById('sakTypeDeliveryDate').value = type.deliveryDate || '';
+    sakTypeModal.show();
+}
+
+function saveSakType() {
+    const id = document.getElementById('editSakTypeId').value;
+    const name = document.getElementById('sakTypeName').value.trim();
+    const price = parseFloat(document.getElementById('sakTypePrice').value);
+    const target = parseFloat(document.getElementById('sakTypeTarget').value) || price;
+    const intention = document.getElementById('sakTypeIntention').value.trim();
+    const deliveryDate = document.getElementById('sakTypeDeliveryDate').value;
+
+    if (!name) { showToast('يرجى إدخال اسم الصك', 'warning'); return; }
+    if (!price || price < 0) { showToast('يرجى إدخال سعر صحيح', 'warning'); return; }
+
+    if (id) {
+        const type = sakTypes.find(t => t.id === id);
+        if (type) {
+            type.name = name;
+            type.defaultPrice = price;
+            type.defaultTarget = target;
+            type.intention = intention;
+            type.deliveryDate = deliveryDate;
+        }
+    } else {
+        sakTypes.push({
+            id: generateId(),
+            name: name,
+            defaultPrice: price,
+            defaultTarget: target,
+            intention: intention,
+            deliveryDate: deliveryDate
+        });
+    }
+
+    if (saveSakTypes()) {
+        sakTypeModal.hide();
+        renderSakTypesList();
+        populateSakTypeDropdown();
+        showToast(id ? 'تم تعديل نوع الصك بنجاح' : 'تم إضافة نوع الصك بنجاح', 'success');
+    }
+}
+
+function confirmDeleteSakType(typeId) {
+    deleteTarget = { type: 'sakType', sakTypeId: typeId };
+    document.getElementById('deleteMessage').textContent = 'سيتم حذف نوع الصك نهائياً';
+    deleteModal.show();
+}
+
+// ============================================
+// EXPORT EXCEL
 // ============================================
 function exportExcel() {
     if (saks.length === 0) {
@@ -605,66 +713,55 @@ function exportExcel() {
 
     const wb = XLSX.utils.book_new();
 
-    // ====== SHEET 1: ملخص الحملة ======
-    const totalRequired = saks.reduce((sum, s) => sum + s.requiredAmount, 0);
+    // Sheet 1: Summary
+    const totalRequired = saks.reduce((sum, s) => sum + s.targetAmount, 0);
     const totalCollected = saks.reduce((sum, s) => sum + s.participants.reduce((pSum, p) => pSum + p.amount, 0), 0);
     const totalRemaining = Math.max(totalRequired - totalCollected, 0);
     const totalParticipants = saks.reduce((sum, s) => sum + s.participants.length, 0);
-    const campaignPercent = CAMPAIGN_TARGET > 0 ? ((totalCollected / CAMPAIGN_TARGET) * 100).toFixed(1) + '%' : '0%';
+    const percent = totalRequired > 0 ? ((totalCollected / totalRequired) * 100).toFixed(1) + '%' : '0%';
 
     const summaryRows = [
-        ['خطة المعارف والأثر | حملة الأضاحي 2026', '', '', '', '', '', ''],
-        ['صناع الحياة', '', '', '', '', '', ''],
-        ['', '', '', '', '', '', ''],
-        ['ملخص الحملة', '', '', '', '', '', ''],
-        ['', '', '', '', '', '', ''],
-        ['التارجت الكلي', 'المطلوب', 'المجمع', 'المتبقي', 'نسبة التارجت', 'عدد الصكوك', 'عدد المساهمين'],
-        [CAMPAIGN_TARGET, totalRequired, totalCollected, totalRemaining, campaignPercent, saks.length, totalParticipants],
-        ['', '', '', '', '', '', ''],
-        ['ملخص التحالفات', '', '', '', '', '', ''],
-        ['', '', '', '', '', '', ''],
-        ['التحالف', 'المطلوب', 'المجمع', 'المتبقي', 'عدد الصكوك', 'عدد المساهمين', 'نسبة الاكتمال']
+        [systemSettings.orgName + ' | ' + systemSettings.pageTitle, '', '', '', '', ''],
+        ['حملة الأضاحي 2026', '', '', '', '', ''],
+        ['', '', '', '', '', ''],
+        ['ملخص الحملة', '', '', '', '', ''],
+        ['', '', '', '', '', ''],
+        ['إجمالي التارجت', 'إجمالي المجمع', 'إجمالي المتبقي', 'نسبة الإنجاز', 'عدد الصكوك', 'عدد المساهمين'],
+        [totalRequired, totalCollected, totalRemaining, percent, saks.length, totalParticipants]
     ];
 
-    const allianceData = {};
-    ALLIANCES.forEach(a => allianceData[a] = { required: 0, collected: 0, count: 0, participants: 0 });
-    saks.forEach(sak => {
-        if (allianceData[sak.alliance]) {
-            const collected = sak.participants.reduce((sum, p) => sum + p.amount, 0);
-            allianceData[sak.alliance].required += sak.requiredAmount;
-            allianceData[sak.alliance].collected += collected;
-            allianceData[sak.alliance].count += 1;
-            allianceData[sak.alliance].participants += sak.participants.length;
-        }
-    });
-
-    Object.entries(allianceData).filter(([_, d]) => d.count > 0).forEach(([name, data]) => {
-        const pct = data.required > 0 ? ((data.collected / data.required) * 100).toFixed(1) + '%' : '0%';
-        summaryRows.push([name, data.required, data.collected, Math.max(data.required - data.collected, 0), data.count, data.participants, pct]);
-    });
-
     const wsSummary = XLSX.utils.aoa_to_sheet(summaryRows);
-    wsSummary['!cols'] = [{ wch: 22 }, { wch: 16 }, { wch: 16 }, { wch: 16 }, { wch: 16 }, { wch: 16 }, { wch: 16 }];
+    wsSummary['!cols'] = [{ wch: 18 }, { wch: 18 }, { wch: 18 }, { wch: 16 }, { wch: 14 }, { wch: 16 }];
     wsSummary['!merges'] = [
-        { s: { r: 0, c: 0 }, e: { r: 0, c: 6 } },
-        { s: { r: 1, c: 0 }, e: { r: 1, c: 6 } },
-        { s: { r: 3, c: 0 }, e: { r: 3, c: 6 } },
-        { s: { r: 8, c: 0 }, e: { r: 8, c: 6 } }
+        { s: { r: 0, c: 0 }, e: { r: 0, c: 5 } },
+        { s: { r: 1, c: 0 }, e: { r: 1, c: 5 } },
+        { s: { r: 3, c: 0 }, e: { r: 3, c: 5 } }
     ];
     XLSX.utils.book_append_sheet(wb, wsSummary, 'ملخص الحملة');
 
-    // ====== SHEET 2: تفاصيل الصكوك ======
+    // Sheet 2: Sak Details
     const sakRows = [
-        ['تفاصيل الصكوك', '', '', '', '', '', '', ''],
-        ['', '', '', '', '', '', '', ''],
-        ['رقم الصك', 'نوع الصك', 'التحالف', 'المطلوب', 'المجمع', 'المتبقي', 'نسبة الاكتمال', 'عدد المساهمين']
+        ['تفاصيل الصكوك', '', '', '', '', '', ''],
+        ['', '', '', '', '', '', ''],
+        ['نوع الصك', 'النية', 'تاريخ التسليم', 'التارجت', 'المجمع', 'المتبقي', 'نسبة الإنجاز', 'عدد المساهمين']
     ];
 
     saks.forEach(sak => {
+        const type = sakTypes.find(t => t.id === sak.typeId);
+        const typeName = type ? type.name : sak.typeName || 'غير معروف';
         const collected = sak.participants.reduce((sum, p) => sum + p.amount, 0);
-        const remaining = Math.max(sak.requiredAmount - collected, 0);
-        const percent = sak.requiredAmount > 0 ? ((collected / sak.requiredAmount) * 100).toFixed(1) + '%' : '0%';
-        sakRows.push([sak.id, sak.name, sak.alliance, sak.requiredAmount, collected, remaining, percent, sak.participants.length]);
+        const remaining = Math.max(sak.targetAmount - collected, 0);
+        const pct = sak.targetAmount > 0 ? ((collected / sak.targetAmount) * 100).toFixed(1) + '%' : '0%';
+        sakRows.push([
+            typeName,
+            sak.intention || '',
+            sak.deliveryDate || '',
+            sak.targetAmount,
+            collected,
+            remaining,
+            pct,
+            sak.participants.length
+        ]);
     });
 
     const wsSaks = XLSX.utils.aoa_to_sheet(sakRows);
@@ -672,24 +769,26 @@ function exportExcel() {
     wsSaks['!merges'] = [{ s: { r: 0, c: 0 }, e: { r: 0, c: 7 } }];
     XLSX.utils.book_append_sheet(wb, wsSaks, 'تفاصيل الصكوك');
 
-    // ====== SHEET 3: تفاصيل المساهمين ======
+    // Sheet 3: Participants
     const partRows = [
-        ['تفاصيل المساهمين', '', '', '', '', ''],
-        ['', '', '', '', '', ''],
-        ['نوع الصك', 'التحالف', 'اسم المساهم', 'رقم الهاتف', 'المبلغ', 'ملاحظات', 'تاريخ التسجيل']
+        ['تفاصيل المساهمين', '', '', '', '', '', ''],
+        ['', '', '', '', '', '', ''],
+        ['نوع الصك', 'اسم المساهم', 'المبلغ', 'النية', 'تاريخ التسليم', 'ملاحظات', 'تاريخ التسجيل']
     ];
 
     saks.forEach(sak => {
+        const type = sakTypes.find(t => t.id === sak.typeId);
+        const typeName = type ? type.name : sak.typeName || 'غير معروف';
         if (sak.participants.length === 0) {
-            partRows.push([sak.name, sak.alliance, '(لا يوجد مساهمين)', '', '', '', '']);
+            partRows.push([typeName, '(لا يوجد مساهمين)', '', '', '', '', '']);
         } else {
             sak.participants.forEach(p => {
                 partRows.push([
-                    sak.name,
-                    sak.alliance,
+                    typeName,
                     p.name,
-                    p.phone || '-',
                     p.amount,
+                    p.intention || '-',
+                    p.deliveryDate || '-',
                     p.notes || '-',
                     new Date(p.createdAt).toLocaleString('ar-EG')
                 ]);
@@ -698,139 +797,42 @@ function exportExcel() {
     });
 
     const wsParts = XLSX.utils.aoa_to_sheet(partRows);
-    wsParts['!cols'] = [{ wch: 18 }, { wch: 14 }, { wch: 20 }, { wch: 14 }, { wch: 14 }, { wch: 22 }, { wch: 22 }];
+    wsParts['!cols'] = [{ wch: 18 }, { wch: 20 }, { wch: 14 }, { wch: 18 }, { wch: 14 }, { wch: 22 }, { wch: 22 }];
     wsParts['!merges'] = [{ s: { r: 0, c: 0 }, e: { r: 0, c: 6 } }];
     XLSX.utils.book_append_sheet(wb, wsParts, 'تفاصيل المساهمين');
 
-    // ====== Apply styling ======
-    applyExcelStyling(wb);
-
-    XLSX.writeFile(wb, 'حملة-الأضاحي-2026-صناع-الحياة-' + new Date().toISOString().split('T')[0] + '.xlsx');
+    XLSX.writeFile(wb, 'حملة-الأضاحي-2026-' + new Date().toISOString().split('T')[0] + '.xlsx');
     showToast('تم تصدير Excel بنجاح', 'success');
 }
 
-function applyExcelStyling(wb) {
-    const darkGreen = { fgColor: { rgb: '0D4F3C' } };
-    const green = { fgColor: { rgb: '1A6B4F' } };
-    const gold = { fgColor: { rgb: 'C9A84C' } };
-    const lightGreen = { fgColor: { rgb: 'E8F5F0' } };
-    const white = { fgColor: { rgb: 'FFFFFF' } };
+// ============================================
+// EXPORT PDF
+// ============================================
+function exportPDF() {
+    if (saks.length === 0) {
+        showToast('لا توجد بيانات للتصدير', 'warning');
+        return;
+    }
 
-    wb.SheetNames.forEach(sheetName => {
-        const ws = wb.Sheets[sheetName];
-        const range = XLSX.utils.decode_range(ws['!ref']);
+    const element = document.querySelector('.main-container');
+    const opt = {
+        margin: [10, 10, 10, 10],
+        filename: 'حملة-الأضاحي-2026-' + new Date().toISOString().split('T')[0] + '.pdf',
+        image: { type: 'jpeg', quality: 0.98 },
+        html2canvas: { scale: 2, useCORS: true },
+        jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' }
+    };
 
-        for (let R = range.s.r; R <= range.e.r; ++R) {
-            for (let C = range.s.c; C <= range.e.c; ++C) {
-                const cellAddress = XLSX.utils.encode_cell({ r: R, c: C });
-                const cell = ws[cellAddress];
-                if (!cell) continue;
-                if (!cell.s) cell.s = {};
+    // Temporarily hide buttons for clean PDF
+    const buttons = document.querySelectorAll('.btn, .btn-sak-action, .participant-form, .search-section, .create-section, .export-section');
+    buttons.forEach(b => b.style.display = 'none');
 
-                // Title rows (0, 1)
-                if (R === 0) {
-                    cell.s.font = { bold: true, sz: 16, color: { rgb: 'FFFFFF' } };
-                    cell.s.fill = darkGreen;
-                    cell.s.alignment = { horizontal: 'center', vertical: 'center' };
-                } else if (R === 1) {
-                    cell.s.font = { sz: 12, color: { rgb: 'FFFFFF' } };
-                    cell.s.fill = green;
-                    cell.s.alignment = { horizontal: 'center' };
-                }
-                // Section headers
-                else if ((R === 3 || R === 8) && sheetName === 'ملخص الحملة') {
-                    cell.s.font = { bold: true, sz: 13, color: { rgb: '0D4F3C' } };
-                    cell.s.fill = lightGreen;
-                    cell.s.alignment = { horizontal: 'center', vertical: 'center' };
-                }
-                else if (R === 0 && sheetName !== 'ملخص الحملة') {
-                    cell.s.font = { bold: true, sz: 14, color: { rgb: 'FFFFFF' } };
-                    cell.s.fill = darkGreen;
-                    cell.s.alignment = { horizontal: 'center', vertical: 'center' };
-                }
-                // Table headers
-                else if ((R === 5 || R === 10) && sheetName === 'ملخص الحملة') {
-                    cell.s.font = { bold: true, sz: 11, color: { rgb: 'FFFFFF' } };
-                    cell.s.fill = darkGreen;
-                    cell.s.alignment = { horizontal: 'center', vertical: 'center' };
-                    cell.s.border = {
-                        top: { style: 'thin', color: { rgb: '0D4F3C' } },
-                        bottom: { style: 'thin', color: { rgb: '0D4F3C' } },
-                        left: { style: 'thin', color: { rgb: 'CCCCCC' } },
-                        right: { style: 'thin', color: { rgb: 'CCCCCC' } }
-                    };
-                }
-                else if (R === 2 && sheetName !== 'ملخص الحملة') {
-                    cell.s.font = { bold: true, sz: 11, color: { rgb: 'FFFFFF' } };
-                    cell.s.fill = darkGreen;
-                    cell.s.alignment = { horizontal: 'center', vertical: 'center' };
-                    cell.s.border = {
-                        top: { style: 'thin', color: { rgb: '0D4F3C' } },
-                        bottom: { style: 'thin', color: { rgb: '0D4F3C' } },
-                        left: { style: 'thin', color: { rgb: 'CCCCCC' } },
-                        right: { style: 'thin', color: { rgb: 'CCCCCC' } }
-                    };
-                }
-                // Data rows
-                else if (R > 5 || (sheetName !== 'ملخص الحملة' && R > 2)) {
-                    if (R % 2 === 0) cell.s.fill = { fgColor: { rgb: 'F8FAF9' } };
-                    cell.s.border = {
-                        top: { style: 'thin', color: { rgb: 'E0E6E3' } },
-                        bottom: { style: 'thin', color: { rgb: 'E0E6E3' } },
-                        left: { style: 'thin', color: { rgb: 'E0E6E3' } },
-                        right: { style: 'thin', color: { rgb: 'E0E6E3' } }
-                    };
-
-                    // Number formatting
-                    const headerRow = sheetName === 'ملخص الحملة' ? (R > 10 ? 10 : 5) : 2;
-                    const headerCell = ws[XLSX.utils.encode_cell({ r: headerRow, c: C })];
-                    if (headerCell && headerCell.v) {
-                        const text = String(headerCell.v);
-                        if (text.includes('مبلغ') || text.includes('المتبقي') || text.includes('المطلوب') || text === 'المجمع') {
-                            cell.s.numFmt = '#,##0';
-                            cell.s.alignment = { horizontal: 'center' };
-                        }
-                        if (text.includes('نسبة') || text.includes('اكتمال')) {
-                            cell.s.alignment = { horizontal: 'center' };
-                        }
-                    }
-
-                    // Color remaining
-                    if (sheetName === 'ملخص الحملة' && R === 6 && C === 3 && typeof cell.v === 'number' && cell.v > 0) {
-                        cell.s.font = { color: { rgb: 'E65100' }, bold: true };
-                    }
-                    // Color campaign percent
-                    if (sheetName === 'ملخص الحملة' && R === 6 && C === 4 && typeof cell.v === 'string') {
-                        const pct = parseFloat(cell.v);
-                        if (pct >= 100) cell.s.font = { color: { rgb: '155724' }, bold: true };
-                        else if (pct >= 60) cell.s.font = { color: { rgb: '856404' }, bold: true };
-                        else cell.s.font = { color: { rgb: '721C24' }, bold: true };
-                    }
-                }
-                // Total row in campaign summary
-                if (sheetName === 'ملخص الحملة' && R === 6) {
-                    cell.s.font = { bold: true, sz: 11, color: { rgb: 'FFFFFF' } };
-                    cell.s.fill = green;
-                    cell.s.alignment = { horizontal: 'center' };
-                    cell.s.border = {
-                        top: { style: 'medium', color: { rgb: '0D4F3C' } },
-                        bottom: { style: 'medium', color: { rgb: '0D4F3C' } }
-                    };
-                }
-            }
-        }
-
-        if (!ws['!rows']) ws['!rows'] = [];
-        ws['!rows'][0] = { hpt: 35 };
-        ws['!rows'][1] = { hpt: 28 };
-        if (sheetName === 'ملخص الحملة') {
-            ws['!rows'][3] = { hpt: 28 };
-            ws['!rows'][5] = { hpt: 25 };
-            ws['!rows'][8] = { hpt: 28 };
-            ws['!rows'][10] = { hpt: 25 };
-        } else {
-            ws['!rows'][2] = { hpt: 25 };
-        }
+    html2pdf().set(opt).from(element).save().then(() => {
+        buttons.forEach(b => b.style.display = '');
+        showToast('تم تصدير PDF بنجاح', 'success');
+    }).catch(() => {
+        buttons.forEach(b => b.style.display = '');
+        showToast('خطأ في تصدير PDF', 'danger');
     });
 }
 
@@ -838,13 +840,22 @@ function applyExcelStyling(wb) {
 // BACKUP & RESTORE
 // ============================================
 function exportBackup() {
-    if (saks.length === 0) { showToast('لا توجد بيانات', 'warning'); return; }
-    const backup = { version: '1.0', campaign: 'حملة الأضاحي 2026', org: 'صناع الحياة', date: new Date().toISOString(), data: saks };
+    const backup = {
+        version: '2.1',
+        campaign: 'حملة الأضاحي 2026',
+        org: systemSettings.orgName,
+        date: new Date().toISOString(),
+        data: {
+            saks: saks,
+            sakTypes: sakTypes,
+            settings: systemSettings
+        }
+    };
     const blob = new Blob([JSON.stringify(backup, null, 2)], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = 'حملة-الأضاحي-2026-' + new Date().toISOString().split('T')[0] + '.json';
+    a.download = 'نسخة-احتياطية-حملة-الأضاحي-' + new Date().toISOString().split('T')[0] + '.json';
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
@@ -852,40 +863,82 @@ function exportBackup() {
     showToast('تم تصدير النسخة الاحتياطية', 'success');
 }
 
-function importBackup(e) {
-    const file = e.target.files[0];
+function importBackup(input) {
+    const file = input.files[0];
     if (!file) return;
     const reader = new FileReader();
     reader.onload = function(ev) {
         try {
             const backup = JSON.parse(ev.target.result);
-            if (backup.data && Array.isArray(backup.data)) {
-                if (confirm('استيراد ' + backup.data.length + ' صك؟ سيتم استبدال البيانات الحالية.')) {
-                    saks = backup.data;
-                    saveData();
-                    updateUI();
-                    showToast('تم استيراد البيانات بنجاح', 'success');
+            let data = backup.data || backup;
+
+            if (confirm('استيراد البيانات؟ سيتم استبدال البيانات الحالية.')) {
+                if (data.saks) saks = data.saks;
+                if (data.sakTypes) sakTypes = data.sakTypes;
+                if (data.settings) systemSettings = data.settings;
+
+                saveSaks();
+                saveSakTypes();
+                saveSystemSettingsData();
+
+                if (systemSettings.darkMode) {
+                    document.body.classList.add('dark-mode');
+                } else {
+                    document.body.classList.remove('dark-mode');
                 }
-            } else { showToast('ملف غير صالح', 'danger'); }
-        } catch(err) { showToast('خطأ في قراءة الملف', 'danger'); }
+
+                updateUI();
+                showToast('تم استيراد البيانات بنجاح', 'success');
+            }
+        } catch(err) { 
+            showToast('خطأ في قراءة الملف', 'danger'); 
+        }
     };
     reader.readAsText(file);
-    e.target.value = '';
+    input.value = '';
+}
+
+function resetAllData() {
+    if (confirm('هل أنت متأكد من إعادة ضبط جميع البيانات؟ سيتم حذف كل شيء نهائياً!')) {
+        saks = [];
+        sakTypes = [];
+        systemSettings = {
+            orgName: 'صناع الحياة',
+            pageTitle: 'نظام صكوك الأضاحي',
+            darkMode: false
+        };
+
+        saveSaks();
+        saveSakTypes();
+        saveSystemSettingsData();
+
+        document.body.classList.remove('dark-mode');
+        updateUI();
+        showToast('تم إعادة ضبط البيانات', 'success');
+        settingsModal.hide();
+    }
 }
 
 // ============================================
 // UTILITIES
 // ============================================
 function formatNumber(num) {
+    if (num === undefined || num === null) return '0';
     return num.toLocaleString('en-US');
 }
 
-function formatDate(iso) {
-    return new Date(iso).toLocaleDateString('ar-EG', { year: 'numeric', month: 'short', day: 'numeric' });
+function formatDate(dateStr) {
+    if (!dateStr) return '';
+    try {
+        return new Date(dateStr).toLocaleDateString('ar-EG', { year: 'numeric', month: 'short', day: 'numeric' });
+    } catch(e) { return dateStr; }
 }
 
 function formatDateTime(iso) {
-    return new Date(iso).toLocaleString('ar-EG', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+    if (!iso) return '';
+    try {
+        return new Date(iso).toLocaleString('ar-EG', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+    } catch(e) { return iso; }
 }
 
 function escapeHtml(text) {
